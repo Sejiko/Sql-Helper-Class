@@ -1,20 +1,11 @@
 <?php
 
-/**
- * Sqlhandle: A class to siplify the usage of the PDO class
- *
- * @autor Florian Heidebrecht
- * edited by Philipp Caldwell
- *
- */
-
 class Sqlhandle extends PDO{
 
 	private $host;
 	private $dbName;
 	private $user;
 	private $password;
-
 	public $lastQuerry = '';
 
 	public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = ''){
@@ -34,10 +25,7 @@ class Sqlhandle extends PDO{
 	private function conn(){
 		try{
 			parent::__construct(
-				'mysql:host='.$this->host.';dbname='.$this->dbName.';',
-				$this->user,
-				$this->password,
-				array(PDO::ATTR_TIMEOUT => 1)
+					'mysql:host=' . $this->host . ';dbname=' . $this->dbName . ';', $this->user, $this->password, array(PDO::ATTR_TIMEOUT => 1)
 			);
 		} catch (PDOException $exception){
 			return $exception;
@@ -128,6 +116,7 @@ class Sqlhandle extends PDO{
 
 		return $query;
 	}
+
 }
 
 ?>
