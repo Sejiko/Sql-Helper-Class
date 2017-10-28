@@ -1,86 +1,133 @@
 <?php
+
 /**
- * Version 0.0.1
+ * Sqlhandle: A class to siplify the usage of the PDO class
+ *
+ * @autor Florian Heidebrecht
+ * edited by Philipp Caldwell
+ *
  */
-class Sqlhandle {
+
+class Sqlhandle extends PDO{
 
 	private $host;
-	private $user;
 	private $dbName;
-	private $pass;
-	public $pdoObj;
+	private $user;
+	private $password;
 
-	public function __construct($bdName, $user, $pass, $host) {
+	public $lastQuerry = '';
+
+	public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = ''){
 		$this->host = $host;
+		$this->dbName = $dbName;
 		$this->user = $user;
-		$this->dbName = $bdName;
-		$this->pass = $pass;
-		$this->pdoObj = $this->conn();
+		$this->password = $password;
+
+		$this->conn();
 	}
 
-	public function conn() {
-		$obj = '';
-		try {
-			$obj = new PDO("mysql:host=" . $this->host . ";dbname=" . $this->dbName . ";", $this->user, $this->pass, array(PDO::ATTR_TIMEOUT => 1));
-		} catch (PDOException $ex) {
-			$obj = $ex;
-		}
-		return $obj;
+	public function setDbName($value){
+		$this->dbName = $value;
+		$this->conn();
 	}
 
-	public function get_dbNames() {
-		$obj = $this->pdoObj->query('SHOW DATABASES');
-		$res = $obj->fetchAll(PDO::FETCH_COLUMN);
-		return $res;
-	}
-
-	public function getTables() {
-		$obj = $this->pdoObj->query("Show Tables In $this->dbName");
-		$res = $obj->fetchAll(PDO::FETCH_COLUMN);
-		return $res;
-	}
-
-	public function getHeader($table) {
-		$obj = $this->pdoObj->query('DESCRIBE ' . $table);
-		$res = $obj->fetchAll(PDO::FETCH_COLUMN);
-		return $res;
-	}
-
-	public function getTableData($tbname) {
-		try {
-			$obj = $this->pdoObj->query("SELECT * FROM $tbname");
-			$obj->execute();
-			$res = $obj->fetchAll(PDO::FETCH_ASSOC);
-		} catch (PDOException $ex) {
-			$res = false;
-		}
-		return $res;
-	}
-
-	public function prepare($sql, $data = []) {
-		$sth = $this->pdoObj->prepare($sql);
-
-		foreach($data as $key => $val) {
-			$sth->bindValue($key + 1, $data[$key]);
+	private function conn(){
+		try{
+			parent::__construct(
+				'mysql:host='.$this->host.';dbname='.$this->dbName.';',
+				$this->user,
+				$this->password,
+				array(PDO::ATTR_TIMEOUT => 1)
+			);
+		} catch (PDOException $exception){
+			return $exception;
 		}
 
-		if(!$sth->execute()) {
-			return false;
-		}
-		$res = $sth->fetchAll(PDO::FETCH_ASSOC);
-		return $res;
+		return true;
 	}
 
-	private function do_query($string) {
+	private function doQuery($query, $mode = PDO::FETCH_COLUMN){
+		$obj = $this->query($query);
 
-		$sth = $this->pdoObj->prepare($string);
-		if(!$sth->execute()) {
-			return false;
+		if($obj){
+			return $obj->fetchAll($mode);
 		}
-		$res = $sth->fetchAll(PDO::FETCH_ASSOC);
-		return $res;
+
+		return NULL;
 	}
 
+	public function getDatabaseNames(){
+		return $this->doQuery('SHOW DATABASES');
+	}
+
+	public function getTableNames(){
+		$data = [$this->dbName];
+		$query = $this->prePrepare('SHOW TABLES IN $other', $data);
+
+		return $this->doQuery($query);
+	}
+
+	public function tableExists($table){
+		$tableNames = $this->getTableNames();
+
+		if(in_array(strtolower($table), $tableNames)){
+			return true;
+		}
+
+		return false;
+	}
+
+	public function getColumnNames($table){
+		$data = [$table];
+		$query = $this->prePrepare('DESCRIBE $table', $data);
+
+		return $this->doQuery($query);
+	}
+
+	public function columExists($table, $column){
+		$columnNames = $this->getColumnNames($table);
+
+		if(in_array(strtolower($column), $columnNames)){
+			return true;
+		}
+
+		return false;
+	}
+
+	public function prepare($query, $data = []){
+		$query = $this->prePrepare($query, $data);
+
+		$obj = parent::prepare($query);
+		$this->lastQuerry = $query;
+
+		foreach($data as $key => $val){
+			$obj->bindValue($key + 1, $val);
+		}
+
+		if(!$obj->execute()){
+			return $this->errorInfo();
+		}
+
+		return $obj->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	private function prePrepare($query, &$data){
+		$pattern = '/(?<!\$)\$(?!\$)/';
+
+		$numberOfMatches = preg_match_all($pattern, $query);
+
+		for($i = 0; $i < $numberOfMatches; $i++){
+			if(preg_match('/^\w+$/', $data[0])){
+				$query = preg_replace($pattern, array_shift($data), $query, 1);
+			} else{
+				return false;
+			}
+		}
+
+		str_replace('$$', '$', $query);
+
+		return $query;
+	}
 }
 
 ?>

@@ -1,0 +1,11 @@
+$sql = new Sqlhandle();
+
+echo '<textarea>';
+
+$sql->setDbName('test');
+
+$data = ['testable', 'id', 'message', 1, 'hello'];
+var_dump($sql->prepare('SELECT * FROM $ WHERE $ = ? and $ = ?', $data));
+var_dump($sql->lastQuerry);
+
+echo '</textarea>';
