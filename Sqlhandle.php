@@ -1,84 +1,146 @@
 <?php
-/**
- * Version 0.0.1
- */
-class Sqlhandle {
+
+class Sqlhandle extends PDO {
 
 	private $host;
-	private $user;
 	private $dbName;
-	private $pass;
-	public $pdoObj;
+	private $user;
+	private $password;
+	public $lastQuerry = '';
 
-	public function __construct($bdName, $user, $pass, $host) {
+	public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = '') {
 		$this->host = $host;
+		$this->dbName = $dbName;
 		$this->user = $user;
-		$this->dbName = $bdName;
-		$this->pass = $pass;
-		$this->pdoObj = $this->conn();
+		$this->password = $password;
+
+		$this->conn();
 	}
 
-	public function conn() {
-		$obj = '';
+	public function setDbName($dbName) {
+		$this->dbName = $dbName;
+		$this->conn();
+	}
+
+	private function conn() {
 		try {
-			$obj = new PDO("mysql:host=" . $this->host . ";dbname=" . $this->dbName . ";", $this->user, $this->pass, array(PDO::ATTR_TIMEOUT => 1));
-		} catch (PDOException $ex) {
-			$obj = $ex;
+			parent::__construct(
+					'mysql:host=' . $this->host . ';dbname=' . $this->dbName . ';', $this->user, $this->password, array(PDO::ATTR_TIMEOUT => 1)
+			);
+		} catch (PDOException $exception) {
+			return $exception;
 		}
-		return $obj;
+
+		return true;
 	}
 
-	public function get_dbNames() {
-		$obj = $this->pdoObj->query('SHOW DATABASES');
-		$res = $obj->fetchAll(PDO::FETCH_COLUMN);
-		return $res;
-	}
+	private function doQuery($query, $mode = PDO::FETCH_COLUMN) {
+		$obj = $this->query($query);
 
-	public function getTables() {
-		$obj = $this->pdoObj->query("Show Tables In $this->dbName");
-		$res = $obj->fetchAll(PDO::FETCH_COLUMN);
-		return $res;
-	}
-
-	public function getHeader($table) {
-		$obj = $this->pdoObj->query('DESCRIBE ' . $table);
-		$res = $obj->fetchAll(PDO::FETCH_COLUMN);
-		return $res;
-	}
-
-	public function getTableData($tbname) {
-		try {
-			$obj = $this->pdoObj->query("SELECT * FROM $tbname");
-			$obj->execute();
-			$res = $obj->fetchAll(PDO::FETCH_ASSOC);
-		} catch (PDOException $ex) {
-			$res = false;
+		if($obj) {
+			return $obj->fetchAll($mode);
 		}
-		return $res;
+
+		return NULL;
 	}
 
-	public function prepare($sql, $data = []) {
-		$sth = $this->pdoObj->prepare($sql);
+	public function getDatabaseNames() {
+		return $this->doQuery('SHOW DATABASES');
+	}
+
+	public function getTableNames() {
+		$data = ['others' => [$this->dbName]];
+		$query = $this->prepareQuery('SHOW TABLES IN $other', $data);
+
+		return $this->doQuery($query);
+	}
+
+	public function tableExists($table) {
+		$tableNames = $this->getTableNames();
+
+		if(in_array(strtolower($table), $tableNames)) {
+			return true;
+		}
+
+		return false;
+	}
+
+	public function getColumnNames($table) {
+		$data = ['tables' => [$table]];
+		$query = $this->prepareQuery('DESCRIBE $table', $data);
+
+		return $this->doQuery($query);
+	}
+
+	public function columExists($table, $column) {
+		$columnNames = $this->getColumnNames($table);
+
+		if(in_array(strtolower($column), $columnNames)) {
+			return true;
+		}
+
+		return false;
+	}
+
+	public function prepare($query, $data = []) {
+		if(!$this->isNumeric($data)) {
+			$query = $this->prepareQuery($query, $data);
+		}
+
+		$obj = parent::prepare($query);
+		$this->lastQuerry = $query;
 
 		foreach($data as $key => $val) {
-			$sth->bindValue($key + 1, $data[$key]);
+			$obj->bindValue($key + 1, $val);
 		}
 
-		if(!$sth->execute()) {
-			return false;
+		if(!$obj->execute()) {
+			return NULL;
 		}
-		$res = $sth->fetchAll(PDO::FETCH_ASSOC);
-		return $res;
+
+		return $obj->fetchAll(PDO::FETCH_ASSOC);
 	}
 
-	private function do_query($string) {
+	private function isNumeric($data) {
+		return array_keys($arr) === range(0, count($arr) - 1);
+	}
 
-		$sth = $this->pdoObj->prepare($string);
-		if(!$sth->execute()) {
-			return false;
+	private function prepareQuery($query, &$data) {
+		if(isset($data['columns'])) {
+			$columnNames = array();
+
+			foreach($data['tables'] as $table) {
+				$columnNames = array_merge($columnNames, $this->getColumnNames($table));
+			}
+
+			$query = $this->prepareField('columns', $query, $data, $columnNames);
 		}
-		$res = $sth->fetchAll(PDO::FETCH_ASSOC);
-		return $res;
+
+		if(isset($data['tables'])) {
+			$query = $this->prepareField('tables', $query, $data);
+		}
+
+		if(isset($data['others'])) {
+			$query = $this->prepareField('others', $query, $data);
+		}
+
+		return $query;
+	}
+
+	private function prepareField($index, $query, &$data, $columnNames = []) {
+		foreach($data[$index] as $element) {
+			if($index == 'tables' and $this->tableExists($element)) {
+				$query = preg_replace('/(\$table)/', $element, $query, 1);
+			} else if($index == 'columns' and in_array(strtolower($element), $columnNames)) {
+				$query = preg_replace('/(\$column)/', $element, $query, 1);
+			} else if($index == 'others' and preg_match('/^(\w+)$/', $element)) {
+				$query = preg_replace('/(\$other)/', $element, $query, 1);
+			}
+		}
+
+		unset($data[$index]);
+
+		return $query;
 	}
 
 }
