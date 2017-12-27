@@ -1,11 +1,21 @@
-$sql = new Sqlhandle();
+//Sqlhandle($host, $dbName, $user, $password)
+$sql = new Sqlhandle('localhost', '', 'root', '');
+$sql->prepare('DROP DATABASE SqlHandle');
+$sql->create('SqlHandle', 'DATABASE');
+$sql->setDbName('SqlHandle');
+$createQuery = 'Create Table SqlTable('
+		. 'id int Primary Key Not NUll AUTO_Increment,'
+		. 'name varchar(50),'
+		. 'lastname varchar(50),'
+		. 'nickname varchar(50)'
+		. ');';
+$sql->prepare($createQuery);
 
-echo '<textarea>';
+$sql->insert('SqlTable', ['name', 'lastname', 'nickname'], ['Florian', 'H', 'Sejiko']);
+$sql->insert('SqlTable', ['name', 'lastname', 'nickname'], ['Florian', 'H', 'Sejiko']);
+$sql->delete('SqlTable', 0);
+$sql->insert('SqlTable', ['name', 'lastname', 'nickname'], ['Florian', 'H', 'Sejiko']);
+$sql->update('SqlTable', ['name', 'lastname', 'nickname'], ['P', 'P', 'PPP'], 'where id = 1');
+var_dump($sql->select('SqlTable', ['name', 'nickname'], 1));
 
-$sql->setDbName('test');
-
-$data = ['testable', 'id', 'message', 1, 'hello'];
-var_dump($sql->prepare('SELECT * FROM $ WHERE $ = ? and $ = ?', $data));
-var_dump($sql->lastQuerry);
-
-echo '</textarea>';
+//TODO prepare another example
