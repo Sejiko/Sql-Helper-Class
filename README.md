@@ -1,5 +1,4 @@
 # Sqhandle
 @Athor: Florian H
 
-@editors:
--CHlM3RA
+values generic prefilter from user or standard
