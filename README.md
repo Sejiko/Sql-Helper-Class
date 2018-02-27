@@ -1,6 +1,14 @@
 # Sqhandle
 @Athor: Florian H
 
+TODO: Think of a better Name 
+- SqlProtection
+- SqlManager
+- SqlBoost <-- most liklie to be the name
+- SqlRocket
+- SimpleSql
+- etc ...
+
 Features:
 1. values generic prefilter from user or standard
 2. Transaction support
