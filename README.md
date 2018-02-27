@@ -4,7 +4,7 @@
 TODO: Think of a better Name 
 - SqlProtection
 - SqlManager
-- SqlBoost <-- most liklie to be the name
+- SqlBoost <-- most likely to be the name
 - SqlRocket
 - SimpleSql
 - etc ...
