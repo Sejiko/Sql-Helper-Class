@@ -9,6 +9,10 @@ TODO: Think of a better Name
 - SimpleSql
 - etc ...
 
+Other-TODOS
+-write unit-Tests
+-write simple use Cases
+
 Features:
 1. values generic prefilter from user or standard
 2. Transaction support
