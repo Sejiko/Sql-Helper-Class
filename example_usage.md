@@ -19,11 +19,11 @@ Setup:
   - age
   - Birthday
 
->//Initialize a new SqlObject
+>Initialize a new SqlObject:
 ```PHP
 <?php
 
-//arguments are like: SqlBoost(hostname, databasename, username, password, debugging)
+>arguments are like: SqlBoost(hostname, databasename, username, password, debugging)
 $sql = new SqlBoost('localhost', '', 'root', '')    //By default Debugging is set to OFF
 $sql = new SqlBoost('localhost', '', 'root', '', 1) // Turn on Debug with the Last argument: 1
 
