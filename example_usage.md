@@ -19,11 +19,9 @@ Setup:
   - age
   - Birthday
 
->Initialize a new SqlObject:
-
-Parameter: SqlBoost(hostname, databasename, username, password, debugging)
-
-By default debugMode is set to Off
+Initialize a new SqlObject:
+Parameter: SqlBoost(hostname, databasename, username, password, debugging).
+By default debugMode is set to Off.
 ```PHP
 <?php
 $sql = new SqlBoost(); //Default Values are: 'localhost', 'root'
@@ -46,7 +44,6 @@ Creating Databases From Setup:
   $values = [];
     
   $sql->execute($query, $table, $columns, $values);
-  
 
 ?>
 ```
