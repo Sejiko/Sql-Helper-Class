@@ -19,7 +19,7 @@ Setup:
   - age
   - Birthday
 
-//Initialize a new SqlObject
+>//Initialize a new SqlObject
 ```PHP
 <?php
 
