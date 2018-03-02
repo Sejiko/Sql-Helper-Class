@@ -20,13 +20,13 @@ Setup:
   - Birthday
 
 >Initialize a new SqlObject:
+>Parameter: SqlBoost(hostname, databasename, username, password, debugging)
+>By default debugMode is set to Off
 ```PHP
 <?php
-
->arguments are like: SqlBoost(hostname, databasename, username, password, debugging)
-$sql = new SqlBoost('localhost', '', 'root', '')    //By default Debugging is set to OFF
-$sql = new SqlBoost('localhost', '', 'root', '', 1) // Turn on Debug with the Last argument: 1
-
+$sql = new SqlBoost(); //Default Values are: 'localhost', 'root'
+$sql = new SqlBoost('localhost', '', 'root', ''); 
+$sql = new SqlBoost('localhost', '', 'root', '', 1); // Turn on Debug
 ?>
 ```
 
