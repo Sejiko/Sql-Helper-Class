@@ -20,6 +20,7 @@ Setup:
   - Birthday
 
 //Initialize a new SqlObject
+```PHP
 <?php
 
 //arguments are like: SqlBoost(hostname, databasename, username, password, debugging)
@@ -27,6 +28,7 @@ $sql = new SqlBoost('localhost', '', 'root', '')    //By default Debugging is se
 $sql = new SqlBoost('localhost', '', 'root', '', 1) // Turn on Debug with the Last argument: 1
 
 ?>
+```
 
 Creating Databases From Setup:
 
