@@ -38,10 +38,15 @@ Creating Databases From Setup:
   //Because creating a Table is to complex and doesnt makes it esier we have to use our Core function like so:
   //The Core function gets later in more Detail explained.
   
-  $query = "Create Table % ();"
-  $table(s) = '' or [];
-  $columns = [];
-  $values = [];
+  $query = "CREATE TABLE % (
+    % INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    % varchar(8),
+    % varchar(8),
+    % varchar(16)
+  );"
+  
+  $table = 'user';
+  $columns = ['id', 'name', 'surname', 'nickname'];
     
   $sql->execute($query, $table, $columns, $values);
 
