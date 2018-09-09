@@ -9,229 +9,192 @@
  * @author Florian Heidebrecht
  *
  */
-class SqlBoost extends PDO{
+class SqlBoost extends PDO {
+    private $host;
+    private $dbName;
+    private $user;
+    private $password;
+    private $placeholder = '$';
+    private $lastQuery = '';
+    private $sqlQuery = '_';
+    private $sqlQueryInformation = [];
+    private $sqlQuerySubstitution = [];
+    private $sqlResponseMethod = 2;
+    private $nullStatements = ['isnull' => ' IS NULL ', 'isnotnull' => ' IS NOT NULL '];
 
-	private $host;
-	private $dbName;
-	private $user;
-	private $password;
-	private $castMethod = 2;
-	private $lastQuery = '';
-	private $debug;
-	private $debugIndex = 1;
-	private $debugMessage = array(
-		'noVariables' => 'Variables are not allowed in a query!!!',
-		'invalidArgs' => 'Table or Columns are not clean!!!',
-		'countArgs' => 'Unequal Argument Count!!!'
-	);
+    public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = '') {
+        $this->host = $host;
+        $this->dbName = $dbName;
+        $this->user = $user;
+        $this->password = $password;
 
-	public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = '', $debug = false){
-		$this->host = $host;
-		$this->dbName = $dbName;
-		$this->user = $user;
-		$this->password = $password;
-		$this->debug = $debug;
-		//error_reporting(0);
-		try{
-			parent::__construct(
-					'mysql:host=' . $this->host . ';dbname=' . $this->dbName . ';', $this->user, $this->password, array(PDO::ATTR_TIMEOUT => 1)
-			);
-		} catch (PDOException $e){
-			throw $e;
-		}
-	}
+        try {
+            parent::__construct(
+                    'mysql:host=' . $this->host . ';dbname=' . $this->dbName . ';', $this->user, $this->password, array(PDO::ATTR_TIMEOUT => 1)
+            );
+        } catch (PDOException $e) {
+            throw $e;
+        }
+    }
 
-	public function setDatabaseName($dbName){
-		$query = 'use %';
-		$this->dbName = $dbName;
-		$this->execute($query, $dbName);
-	}
+//TODO get Last (n) results
+    /**
+     *
+     * @param type $query
+     * @param type $information
+     * @param type $substitution
+     * @param type $responseMethod
+     * @return boolean
+     */
+    public function execute($query = '', $information = [], $substitution = [], $responseMethod = PDO::FETCH_ASSOC) {
+        if(empty($query)) {
+            return $this->executeMethodChain();
+        }
 
-	public function getDatabaseNames(){
-		$this->setCastMethod(7);
-		return $this->execute('SHOW DATABASES;');
-	}
+        $this->escapeQuery($query, $this->toArray($substitution));
+        $obj = parent::prepare($query);
+        if (!$obj->execute($information)) {
+            return false;
+        }
 
-	public function isTable($table, $dbName = ''){
-		var_dump($dbName);
-		var_dump($this->dbName);
-		if(empty($dbName)){
-			$dbName = $this->dbName;
-		}
-		var_dump($dbName);
-		$systemTables = $this->getTableNames($dbName);
-		return in_array($table, $systemTables);
-	}
+        return $this->fetchResults($obj, $responseMethod);
+    }
+    
+    private function executeMethodChain($responseMethod = PDO::FETCH_ASSOC) {
+        return $this->execute($this->sqlQuery, $this->sqlQueryInformation, $this->sqlQuerySubstitution, $this->sqlResponseMethod);
+    }
 
-	public function getTableNames($dbname = NULL){
-		if(!isset($dbname)){
-			$dbname = $this->dbName;
-		}
+    private function escapeQuery(&$query, $substitutions = []) {
+        $replacements = preg_grep('/^\w+$/', $substitutions);
+        if ($substitutions != $replacements) {
+            throw new Exception('Invalid tables in Query: [' . $query . ']');
+        }
 
-		$dbname = $this->toArray($dbname);
+        foreach ($replacements as $replacement) {
+            $query = preg_replace('/\\' . $this->placeholder . '/', $replacement, $query, 1);
+        }
 
-		$this->setCastMethod(7);
-		return $this->execute('SHOW TABLES IN %', $dbname);
-	}
+        $this->lastQuery = $query;
+    }
 
-	public function isColumn($table, $column){
-		$systemColumns = $this->getColumnNames($table);
+    function getLastQuery() {
+        return $this->lastQuery;
+    }
 
-		return in_array($column, $systemColumns);
-	}
+    private function fetchResults($result, $responseMethod) {
+        return (is_callable($responseMethod)) ? call_user_func($responseMethod, $result) : $result->fetchAll($responseMethod);
+    }
 
-	public function getColumnNames($table){
-		$table = $this->toArray($table);
-		$this->setCastMethod(7);
+    public function setDatabaseName($dbName) {
+        $query = 'use $';
+        $this->dbName = $dbName;
+        $this->execute($query, [], $dbName);
+    }
 
-		return $this->execute('DESCRIBE %', $table);
-	}
+    public function getDatabaseNames() {
+        return $this->execute('SHOW DATABASES;', [], [], PDO::FETCH_COLUMN);
+    }
 
-	public function execute($query, $tables = [], $columns = [], $values = []){
-		$rawArgs = get_defined_vars();
-		$args = $this->prepareQuery($rawArgs);
+    public function isTable($table, $dbName = '') {
+        if (empty($dbName)) {
+            $dbName = $this->dbName;
+        }
+        $systemTables = $this->getTableNames($dbName);
 
-		if(!$args){
-			return false;
-		}
+        return in_array($table, $systemTables);
+    }
 
-		$this->lastQuery = $args['query'];
+    public function getTableNames($dbName = '') {
+        if (empty($dbName)) {
+            $dbName = $this->dbName;
+        }
 
-		$obj = $this->bindValuesToQuery($args['query'], $args['values']);
+        return $this->execute('SHOW TABLES IN $', [], $dbName, PDO::FETCH_COLUMN);
+    }
 
-		if(!$obj->execute()){
-			return $this->showDebug();
-		}
+    public function isColumn($table, $column) {
+        $systemColumns = $this->getColumnNames($table);
 
-		return $this->castResult($obj);
-	}
+        return in_array($column, $systemColumns);
+    }
 
-	private function bindValuesToQuery($query, $values){
-		$obj = parent::prepare($query);
+    public function getColumnNames($table) {
+        return $this->execute('DESCRIBE $', [], $table, PDO::FETCH_COLUMN);
+    }
 
-		foreach($values as $key => $value){
-			$obj->bindValue($key += 1, $value);
-		}
+    public function getParams($argsCount, $char, $default) {
+        $paramString = rtrim(str_repeat($char . ',', $argsCount), ',');
+        return (strlen($paramString) > 0) ? $paramString : $default;
+    }
 
-		return $obj;
-	}
+    private function substituteNullStatemennts($keyword) {
+        return (in_array($keyword, $this->nullStatements)) ? $this->nullStatements[$keyword] : false;
+    }
 
-	private function prepareQuery($args){
-		if(!(strpos($args['query'], '$') === false)){
-			$this->showDebug($this->debugMessage['noVariables'], 1);
-			return false;
-		}
+    public function where() {
+        
+    }
+    
+    /**
+     *
+     * @param type $whereConditions
+     * @param type $informations
+     * @return string
+     */
+    public function getWhereClause($whereConditions) {
+        $whereClause = 'WHERE ';
+        if (empty($whereConditions)) {
+            return $whereClause . '1 = 1;';
+        }
 
-		$args['tables'] = $this->toArray($args['tables']);
-		$args['columns'] = $this->toArray($args['columns']);
-		$args['values'] = $this->toArray($args['values']);
+        $last = key(array_slice($whereConditions, -1, 1, TRUE));
+        foreach ($whereConditions as $logicOperator => $conditions) {
+            $lastElement = end($conditions)[0];
+            foreach ($conditions as $comparisonOperator => $columns) {
+                foreach ($columns as $column) {
+                    $checkNull = $this->substituteNullStatemennts($comparisonOperator);
+                    if ($checkNull) {
+                        $whereClause .= $column . $checkNull;
+                    } else {
+                        $whereClause .= $column . ' ' . $comparisonOperator . ' ? ';
+                    }
 
-		$rawMergedValues = array_merge($args['columns'], $args['tables']);
-		$mergedValues = $this->filterReplacements($rawMergedValues);
+                    if (!($last == $logicOperator && $lastElement == $column)) {
+                        $whereClause .= $logicOperator . ' ';
+                    }
+                }
+            }
+        }
 
-		if($mergedValues === false){
-			$this->showDebug($this->debugMessage['invalidArgs'], 1);
-			return false;
-		}
+        return $whereClause;
+    }
 
-		$countArgs = substr_count($args['query'], '%');
-		$countMergedArgs = count($mergedValues);
+    public function select($table, $columns = []) {
+        $this->sqlQuery = 'SELECT ' . $this->getParams(count($columns), '$', '*') . ' FROM $';
+        $this->sqlQuerySubstitution = array_merge($this->sqlQuerySubstitution, $columns, [$table]);
+        return $this;
+    }
 
-		if($countArgs !== $countMergedArgs){
-			$this->showDebug($this->debugMessage['countArgs'], 1);
-			return false;
-		}
+    public function insert() {
+        //TODO implement
+    }
 
-		$this->replaceValues($args['query'], $mergedValues);
+    public function update() {
+        //TODO implement
+    }
 
-		return $args;
-	}
+    public function delete() {
+        //TODO implement
+    }
 
-	private function filterReplacements(&$array){
-		$result = filter_var_array($array, FILTER_SANITIZE_STRING);
-		return ($array === $result) ? $result : false;
-	}
+    //TODO implement Transactions
+    public function checkTransaction() {
+        //TODO implement
+    }
 
-	private function replaceValues(&$query, $values){
-		foreach($values as $value){
-			$query = preg_replace('/\%/', $value, $query, 1);
-		}
-	}
-
-	public function setCastMethod($number){
-		$this->castMethod = intval($number, 10);
-	}
-
-	private function castResult($obj){
-		$result = $obj->fetchAll($this->castMethod);
-		$this->castMethod = 2;
-		return $result;
-	}
-
-	public function startQueue(){
-
-	}
-
-	public function endQueue(){
-
-	}
-
-	public function create(){
-
-	}
-
-	public function select(){
-
-	}
-
-	public function insert(){
-
-	}
-
-	public function update(){
-
-	}
-
-	public function delete(){
-
-	}
-
-	public function reCast($array, $specialMethod){
-		//Different Methods than PDO
-		return $array;
-	}
-
-	private function showDebug($hint = 'no Hint', $hide = 0){
-		if(!$this->debug){
-			return false;
-		}
-
-		$index = $this->debugIndex;
-		if(isset($hide)){
-			$index += $hide;
-		}
-		$debugInfo = debug_backtrace(NULL, 3)[$index];
-
-		$file = $debugInfo['file'] . "\n";
-		$line = $debugInfo['line'] . "\n";
-		$function = $debugInfo['function'];
-
-		echo '<pre>';
-		echo 'File: ' . $file;
-		echo 'LineNumber: ' . $line . "\n";
-		echo 'DebugHint: ' . $hint . "\n\n";
-		echo 'LastQuery: ' . $this->lastQuery . "\n\n";
-
-		echo 'Function: ' . $function . "()\n";
-		echo 'Argument List:' . "\n";
-		var_export($debugInfo['args']);
-		echo '</pre>';
-
-		die();
-	}
-
-	static function toArray($var){
-		return (is_array($var)) ? $var : [$var];
-	}
+    static function toArray($var) {
+        return (is_array($var)) ? $var : [$var];
+    }
 
 }
+?>
