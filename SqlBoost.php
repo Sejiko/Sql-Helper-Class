@@ -20,7 +20,8 @@ class SqlBoost extends PDO {
     private $sqlQueryInformation = [];
     private $sqlQuerySubstitution = [];
     private $sqlResponseMethod = 2;
-    private $nullStatements = ['isnull' => ' IS NULL ', 'isnotnull' => ' IS NOT NULL '];
+    public $startWhere = true;
+    private $nullStatements = ['isnull' => 'IS NULL', 'isnotnull' => 'IS NOT NULL'];
 
     public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = '') {
         $this->host = $host;
@@ -47,7 +48,7 @@ class SqlBoost extends PDO {
      * @return boolean
      */
     public function execute($query = '', $information = [], $substitution = [], $responseMethod = PDO::FETCH_ASSOC) {
-        if(empty($query)) {
+        if (empty($query)) {
             return $this->executeMethodChain();
         }
 
@@ -57,10 +58,14 @@ class SqlBoost extends PDO {
             return false;
         }
 
+        $this->reset();
         return $this->fetchResults($obj, $responseMethod);
     }
-    
+
     private function executeMethodChain($responseMethod = PDO::FETCH_ASSOC) {
+        var_dump($this->sqlQuery);
+        var_dump($this->sqlQueryInformation);
+        var_dump($this->sqlQuerySubstitution);
         return $this->execute($this->sqlQuery, $this->sqlQueryInformation, $this->sqlQuerySubstitution, $this->sqlResponseMethod);
     }
 
@@ -75,6 +80,13 @@ class SqlBoost extends PDO {
         }
 
         $this->lastQuery = $query;
+    }
+
+    private function reset() {
+        $this->sqlQuery = '_';
+        $this->sqlQueryInformation = [];
+        $this->sqlQuerySubstitution = [];
+        $this->sqlResponseMethod = 2;
     }
 
     function getLastQuery() {
@@ -122,19 +134,30 @@ class SqlBoost extends PDO {
         return $this->execute('DESCRIBE $', [], $table, PDO::FETCH_COLUMN);
     }
 
-    public function getParams($argsCount, $char, $default) {
+    public function getParams($argsCount, $char, $default = '') {
         $paramString = rtrim(str_repeat($char . ',', $argsCount), ',');
         return (strlen($paramString) > 0) ? $paramString : $default;
     }
 
-    private function substituteNullStatemennts($keyword) {
-        return (in_array($keyword, $this->nullStatements)) ? $this->nullStatements[$keyword] : false;
+    private function substituteNullStatements($keyword) {
+        return (isset($this->nullStatements[$keyword])) ? $this->nullStatements[$keyword] : $keyword;
     }
 
-    public function where() {
-        
+    public function where($column, $operator = '=', $value = null, $logicOperator = 'AND') {
+        $logicOperator = (in_array(strtoupper($logicOperator), ['OR', 'AND'])) ? $logicOperator : false;
+
+        $prefix = ($this->startWhere) ? ' WHERE' : $logicOperator;
+        $this->startWhere = false;
+        $this->sqlQuery .= $prefix . ' ' . $column . ' ' . $this->substituteNullStatements($operator) . ' ';
+
+        if ($value) {
+            $this->sqlQuery .= '? ';
+            $this->sqlQueryInformation = array_merge($this->sqlQueryInformation, [$value]);
+        }
+
+        return $this;
     }
-    
+
     /**
      *
      * @param type $whereConditions
@@ -148,25 +171,29 @@ class SqlBoost extends PDO {
         }
 
         $last = key(array_slice($whereConditions, -1, 1, TRUE));
+
+        // or/and => [=,<=,isnull...] => columndata
         foreach ($whereConditions as $logicOperator => $conditions) {
             $lastElement = end($conditions)[0];
+            //[=,<=,isnull...] => columdata
             foreach ($conditions as $comparisonOperator => $columns) {
+                //title, name... numeric(nokey)
                 foreach ($columns as $column) {
-                    $checkNull = $this->substituteNullStatemennts($comparisonOperator);
+                    $checkNull = $this->substituteNullStatements($comparisonOperator);
                     if ($checkNull) {
-                        $whereClause .= $column . $checkNull;
+                        $whereClause .= $column . $checkNull . ' ';
                     } else {
                         $whereClause .= $column . ' ' . $comparisonOperator . ' ? ';
                     }
 
                     if (!($last == $logicOperator && $lastElement == $column)) {
-                        $whereClause .= $logicOperator . ' ';
+                        $whereClause .= ' ' . $logicOperator . ' ';
                     }
                 }
             }
         }
 
-        return $whereClause;
+        return '<br>' . $whereClause;
     }
 
     public function select($table, $columns = []) {
@@ -175,16 +202,35 @@ class SqlBoost extends PDO {
         return $this;
     }
 
-    public function insert() {
-        //TODO implement
+    public function insert($table, $columns, $values) {
+        //TODO function(getparams) should count and convert to array
+        $substituteParams = $this->getParams(count($this->toArray($columns)), '$');
+        $preparedValues = $this->getParams(count($this->toArray($columns)), '?');
+
+        $this->sqlQuery = 'INSERT INTO $ (' . $substituteParams . ') VALUES(' . $preparedValues . ')';
+        $this->sqlQuerySubstitution = array_merge($this->sqlQuerySubstitution, [$table], $this->toArray($columns));
+        $this->sqlQueryInformation = array_merge($this->sqlQueryInformation, $this->toArray($values));
+
+        return $this;
     }
 
-    public function update() {
-        //TODO implement
+    public function update($table, $columns, $values) {
+        $arguments = array_fill_keys($columns, '?');
+        $paramString = str_replace('%3F', '?', http_build_query($arguments, null, ','));
+
+        $this->sqlQuery = 'UPDATE $ SET ' . $paramString;
+        echo $this->sqlQuery;
+        $this->sqlQuerySubstitution = array_merge($this->sqlQuerySubstitution, [$table], $this->toArray($columns));
+        $this->sqlQueryInformation = array_merge($this->sqlQueryInformation, $this->toArray($values));
+
+        return $this;
     }
 
-    public function delete() {
-        //TODO implement
+    public function delete($table) {
+        $this->sqlQuery = 'DELETE FROM $';
+        $this->sqlQuerySubstitution = array_merge($this->sqlQuerySubstitution, [$table]);
+
+        return $this;
     }
 
     //TODO implement Transactions
@@ -197,4 +243,5 @@ class SqlBoost extends PDO {
     }
 
 }
+
 ?>
