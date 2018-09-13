@@ -33,22 +33,16 @@ $sql = new SqlBoost('localhost', '', 'root', '', 1); // Turn on Debug
 Creating Databases From Setup:
 ```PHP
 <?php
-  $sql->createDatabase('testDB1');
+
   
-  //Because creating a Table is to complex and doesnt makes it esier we have to use our Core function like so:
-  //The Core function gets later in more Detail explained.
-  
-  $query = "CREATE TABLE % (
-    % INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    % varchar(8),
-    % varchar(8),
-    % varchar(16)
-  );"
-  
-  $table = 'user';
-  $columns = ['id', 'name', 'surname', 'nickname'];
-    
-  $sql->execute($query, $table, $columns, $values);
+ //examples:
+ //safe syntax:
+ $sql->execute('Select $,$ From $ where column1 = ?', [1], ['column1','column2','table']);
+ //unsafe:
+ $sql->execute('Select column1,column2 From table where column1 = 1'); if id is from user the sql is vulnerable
+ 
+ //second syntax:
+ $sql->select('table', ['column1', 'column2'])->where('column1', '=', 1)->execute();
 
 ?>
 ```
