@@ -19,7 +19,12 @@ class SqlBoost extends PDO {
     private $lastQueries;
     private $executionStack = [];
     private $informationStack = [];
+    private $internalExecutionStack = [];
+    private $internalInformationStack = [];
+    private $internalExecution = false;
     private $sqlQueries = [];
+    private $fetchMethod = PDO::FETCH_ASSOC;
+    private $executionState;
     private $sqlQueryInformation = [];
     private $sqlQuerySubstitution = [];
     private $sqlResponseMethod = PDO::FETCH_ASSOC;
@@ -27,7 +32,7 @@ class SqlBoost extends PDO {
     private $nullStatements = ['isnull' => 'IS NULL', 'isnotnull' => 'IS NOT NULL'];
     private $pdoSettings = array(PDO::ATTR_TIMEOUT => 1);
 
-    public function __construct($host = 'localhost', $dbName = '', $user = 'root', $password = '', array $pdoSettings = []) {
+    public function __construct($host = 'localhost', $dbName = 'test', $user = 'root', $password = '', array $pdoSettings = []) {
 	$this->host = $host;
 	$this->dbName = $dbName;
 	$this->user = $user;
@@ -51,49 +56,105 @@ class SqlBoost extends PDO {
      * @param string $password optional default ''
      *
      */
-    //TODO make multi instances maybe 2 Databases or two different users; getInstanceOf('Database1'), getInstanceOf('Database2') => should also be singelton
     public static function singleton($host = 'localhost', $dbName = '', $user = 'root', $password = '', array $pdoSettings = []): SQLBoost {
 	self::$singleton = self::$singleton ?? new SQLBoost($host, $dbName, $user, $password);
 
 	return self::$singleton;
     }
-    
+
     /*
      * Add a new Query to the executionStack.
-     * Associates $rawInformation to Array.
+     * Associates $values to it.
      * 
      */
-    public function addQuery(string $query, array $rawInformation = []) {
+
+    public function addQuery(string $query, array $values = []): SqlBoost {
 	$this->executionStack[] = $query;
-	$this->informationStack[] = $rawInformation;
+	$this->informationStack = array_merge($this->informationStack, $values);
+
+	return $this;
+    }
+
+    /*
+     * addValues to the Query
+     */
+
+    public function addValues(array $values): SqlBoost {
+	$this->informationStack = array_merge($this->informationStack, $values);
+	return $this;
+    }
+
+    /*
+     * This function replaces the given prefix in your Query
+     * with an Escaped version of your Table names.
+     * 
+     */
+
+    public function escapeTables(string $prefix, ...$tables) {
+	//TODO escape tables in query
+	return $this;
+    }
+
+    /*
+     * This function replaces the given prefix in your Query
+     * with an Escaped version of your Column names.
+     * 
+     */
+
+    public function escapeColumns(string $prefix, ...$tables) {
+	//TODO escape tables in query
+	return $this;
     }
 
     /**
-     * Executes an SQL Query and prepares Data
+     * Executes an SQL ExecutionStack and prepares Data
      *
-     * Example usage:
-     * 1: $sql->execute($query,$data)
-     * 2: $sql->select('table')->where('id', 1)->execute()
-     *
-     * @param string $query -> optional: if not set a method Chain gets executed otherwise the query.
-     * @param array $information -> optional: replace each value in the SQL string with "?" and provide an array with values
-     * @param array $substitutions -> optional: all tablenames and columnnames are escaped with an "$" instead of "?"
-     * @param number/callable $responseMethod -> number(PDO::FETCH_ASSOC)/Callback specify a return format. callback($result)
-     * @return boolean
+     * @return array
      */
-    public function execute(string $query = '', $information = [], $substitutions = [], $responseMethod = PDO::FETCH_ASSOC) {
-	if (empty($query) && !empty($this->sqlQueries)) {
-	    return $this->executeMethodChain($responseMethod);
+    public function execute($responseMethod = PDO::FETCH_ASSOC) {
+	//TODO if internal Execution is triggered (bool) get Only last stack elements and dont hard reset just remove last elements.
+	$query = '';
+	$informationStack = [];
+	if ($this->internalExecution) {
+	    $query = implode(';', $this->internalExecutionStack);
+	    $informationStack = $this->internalInformationStack;
+	} else {
+	    $query = implode(';', $this->executionStack);
+	    $informationStack = $this->informationStack;
+	}
+	$obj = parent::prepare($query);
+
+	$this->executionState = $obj->execute($informationStack);
+	if (!$this->internalExecution) {
+	    $this->createDebugInformation($query, $this->informationStack, $this->executionState);
 	}
 
-	$this->escapeQuery($query, $substitutions);
-
-	$obj = parent::prepare($query);
-	$executionState = $obj->execute($information);
-	$this->createDebugInformation($query, $information, $executionState);
 	$this->reset();
 
-	return $this->fetchResults($obj, $responseMethod);
+	return $this->fetchResults($obj);
+    }
+
+    function getExecutionState() {
+	return $this->executionState;
+    }
+
+    private function createDebugInformation($query, &$informations, $executionState) {
+	foreach ($informations as $information) {
+	    $query = preg_replace('/\?/', '`' . $information . '`', $query, 1);
+	}
+
+	if (!empty($query)) {
+	    $this->lastQueries[] = array('state' => $executionState, $query);
+	}
+    }
+
+    public function setFetchmethod($fetchmethod): SqlBoost {
+	$this->fetchMethod = $fetchmethod;
+	return $this;
+    }
+
+    private function fetchResults($result) {
+	return (is_callable($this->fetchMethod)) ? call_user_func($this->fetchMethod, $result) : $result->fetchAll($this->fetchMethod);
     }
 
     private function escapeQuery(&$query, $substitutions = []) {
@@ -106,25 +167,6 @@ class SqlBoost extends PDO {
 	foreach ($replacements as $replacement) {
 	    $query = preg_replace('/\\' . $this->placeholder . '/', $replacement, $query, 1);
 	}
-    }
-
-    private function executeMethodChain($responseMethod) {
-	return $this->execute(implode(';', $this->sqlQueries), $this->sqlQueryInformation, $this->sqlQuerySubstitution, $this->sqlResponseMethod, $responseMethod);
-    }
-
-    //TODO change getLastQuery name
-    private function createDebugInformation($query, &$informations, $executionState) {
-	foreach ($informations as $information) {
-	    $query = preg_replace('/\?/', '`' . $information . '`', $query, 1);
-	}
-
-	if (!empty($query)) {
-	    $this->lastQueries[] = array('state' => $executionState, $query);
-	}
-    }
-
-    private function fetchResults($result, $responseMethod) {
-	return (is_callable($responseMethod)) ? call_user_func($responseMethod, $result) : $result->fetchAll($responseMethod);
     }
 
     private function makeParamString($argsCount, $char, $default = '') {
@@ -145,21 +187,16 @@ class SqlBoost extends PDO {
 
     private function reset() {
 	$this->sqlQueries = [];
+	$this->executionStack = [];
+	$this->informationStack = [];
 	$this->sqlQueryInformation = [];
 	$this->sqlQuerySubstitution = [];
 	$this->sqlResponseMethod = 2;
-    }
-
-    public function enqueuSql(string $query = '', $information = [], $substitution = []): object {
-	$this->sqlQueries[] = $query;
-	$this->sqlQueryInformation = array_merge($this->sqlQueryInformation, $information);
-	$this->sqlQuerySubstitution = array_merge($this->sqlQuerySubstitution, $substitution);
-
-	return $this;
+	$this->internalExecution = false;
     }
 
     /**
-     * query unescaped values
+     * query values
      * hide non failed sqls but make placeholder
      *
      * @return string $queryString
@@ -192,14 +229,19 @@ class SqlBoost extends PDO {
      * @param type $dbName
      * @return bool
      */
-    public function setDatabaseName(string $dbName) {
-	$query = 'use $';
-	$this->dbName = $dbName;
-	return $this->execute($query, [], $dbName);
+    public function setDatabaseName(string $dbName): bool {
+	$query = 'use ' . $dbName;
+	$this->addQuery($query);
+	$this->execute();
+	return $this->getExecutionState();
     }
 
     public function getDatabaseNames() {
-	return $this->execute('SHOW DATABASES;', [], [], PDO::FETCH_COLUMN);
+	$this->addQuery('SHOW DATABASES;');
+	$this->setFetchmethod(PDO::FETCH_COLUMN);
+
+	$this->execute();
+	return $this->getExecutionState();
     }
 
     /**
@@ -208,7 +250,7 @@ class SqlBoost extends PDO {
      * @param type $dbName -> optional if empty the internal dbname gets used
      * @return bool
      */
-    public function isTable($table, $dbName = '') {
+    public function isTable($table, $dbName = ''): bool {
 	if (empty($dbName)) {
 	    $dbName = $this->dbName;
 	}
@@ -228,7 +270,7 @@ class SqlBoost extends PDO {
 	    $dbName = $this->dbName;
 	}
 
-	return $this->execute('SHOW TABLES IN $', [], $dbName, PDO::FETCH_COLUMN);
+	return $this->addQuery('SHOW TABLES IN ' . $dbName)->setFetchmethod(PDO::FETCH_COLUMN)->execute();
     }
 
     /**
@@ -238,7 +280,7 @@ class SqlBoost extends PDO {
      * @param type $column
      * @return type
      */
-    public function isColumn($table, $column) {
+    public function isColumn($table, $column): bool {
 	$systemColumns = $this->getColumnNames($table);
 
 	return in_array($column, $systemColumns);
@@ -251,7 +293,7 @@ class SqlBoost extends PDO {
      * @return type
      */
     public function getColumnNames($table) {
-	return $this->execute('DESCRIBE $', [], $table, PDO::FETCH_COLUMN);
+	return $this->addQuery('DESCRIBE ' . $table)->setFetchmethod(PDO::FETCH_COLUMN)->execute();
     }
 
     /**
@@ -372,4 +414,3 @@ class SqlBoost extends PDO {
     }
 
 }
-?>
